@@ -1,3 +1,2 @@
-s3a://commoncrawl/crawl-data/CC-MAIN-2020-40/segments/1600400187354.1/wet/CC-MAIN-20200918061627-20200918091627-00000.warc.wet.gz
-s3a://commoncrawl/crawl-data/CC-MAIN-2020-40/segments/1600400187354.1/wet/CC-MAIN-20200918061627-20200918091627-00001.warc.wet.gz
-s3a://commoncrawl/crawl-data/CC-MAIN-2020-40/segments/1600400187354.1/wet/CC-MAIN-20200918061627-20200918091627-00002.warc.wet.gz
+s3://commoncrawl/crawl-data/CC-MAIN-2020-40/segments/1600400187354.1/wet/CC-MAIN-20200918061627-20200918091627-00000.warc.wet.gz
+s3://commoncrawl/crawl-data/CC-MAIN-2020-40/segments/1600400187354.1/wet/CC-MAIN-20200918061627-20200918091627-00001.warc.wet.gz

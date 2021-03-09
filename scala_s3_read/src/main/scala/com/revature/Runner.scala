@@ -12,6 +12,10 @@ import org.apache.spark.sql.DataFrame
 import scala.io.Source
 import java.nio.file.{Paths, Files}
 import java.io.PrintWriter
+import scala.io.Source.fromFile
+import com.amazonaws.services.s3.model.GetObjectRequest
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 object Runner {
   def main(args: Array[String]): Unit = {
@@ -22,13 +26,18 @@ object Runner {
       .getOrCreate()
 
     // Reference: https://sparkbyexamples.com/spark/spark-read-text-file-from-s3/#s3-dependency
-    val key = System.getenv(("AWSAccessKeyId"))
-    val secret = System.getenv(("AWSSecretKey"))
+    // val key = System.getenv(("AWSAccessKeyId"))
+    // val secret = System.getenv(("AWSSecretKey"))
 
-    spark.sparkContext.hadoopConfiguration.set("fs.s3.access.key", key)
-    spark.sparkContext.hadoopConfiguration.set("fs.s3.secret.key", secret)
-    spark.sparkContext.hadoopConfiguration
-      .set("fs.s3.endpoint", "s3.amazonaws.com")
+    // // local run code
+    // spark.sparkContext.hadoopConfiguration.set("fs.s3a.access.key", key)
+    // spark.sparkContext.hadoopConfiguration.set("fs.s3a.secret.key", secret)
+    // spark.sparkContext.hadoopConfiguration
+    //   .set("fs.s3a.endpoint", "s3.amazonaws.com")
+
+    val s3Client = new AmazonS3Client()
+    val s3Object =
+      s3Client.getObject(new GetObjectRequest("project3q1", "monthcsv.csv"))
 
     import spark.implicits._
     spark.sparkContext.setLogLevel("WARN")
@@ -41,7 +50,9 @@ object Runner {
     val censusData = spark.read
       .format("csv")
       .option("header", "true")
-      .load("ACSDT1Y2019.B01003_data_with_overlays_2021-02-23T105100.csv")
+      .load(
+        "s3://project3q1/ACSDT1Y2019.B01003_data_with_overlays_2021-02-23T105100.csv"
+      )
 
     // Created a State Code list for easier joining with additional warc data.
     val rawStateList = Seq(
@@ -105,23 +116,9 @@ object Runner {
     val combinedCensusData =
       censusData.join(stateList, $"Geographic Area Name" === $"State Name")
 
-//Get a years worth of 2020 segment paths to spark.read for data
-    //Read a whole years worth of data - Jan-Dec 2020
-    // val ob1 = Source
-    //   .fromFile("csv/part-00000-ba7d968d-cce3-4697-bc0c-037e17afb098-c000.csv")
-    //   .getLines()
-    //   .map("s3://commoncrawl/" + _)
-    //   .mkString("\n")
-    // val ob2 = Source
-    //   .fromFile("csv/part-00001-ba7d968d-cce3-4697-bc0c-037e17afb098-c000.csv")
-    //   .getLines()
-    //   .map("s3://commoncrawl/" + _)
-    //   .mkString("\n")
-    // val ob3 = Source
-    //   .fromFile("csv/part-00002-ba7d968d-cce3-4697-bc0c-037e17afb098-c000.csv")
-    //   .getLines()
-    //   .map("s3://commoncrawl/" + _)
-    //   .mkString("\n")
+    // val month = spark.read.csv("s3a://commoncrawl/crawl-data/CC-MAIN-2021-04/wet.paths.gz").write.csv("month")
+    // val ob = Source.fromFile("month/monthJan21.csv").getLines().map("s3://commoncrawl/"+_).mkString("\n")
+    // new PrintWriter("monthcsv"){write(ob);close()}
 
     // new PrintWriter("yearCsv"){write(ob1+ob2+ob3);close()}
 
@@ -135,9 +132,10 @@ object Runner {
         "Population Estimate Total"
       )
 
-      //read each line, extract the data, filter for tech job ads, add to storedDF
-    val bufferedSource = Source.fromFile("yearCsv.csv")
-    for (line <- bufferedSource.getLines()) {
+    //read each line, extract the data, filter for tech job ads, add to storedDF
+
+    val myData = Source.fromInputStream(s3Object.getObjectContent()).getLines()
+    for (line <- myData) {
       val cc = spark.read
         .option("lineSep", "WARC/1.0")
         .text(line)
@@ -197,5 +195,10 @@ object Runner {
         round(($"sum(Tech Job Total)" / $"Population Estimate Total" * 100), 8)
       )
       .show(102, false)
+
+    val s3OuputBucket = "s3://project3output/q1output/"
+
+    storedDF.write.format("csv").mode("overwrite").save(s3OuputBucket)
+    spark.close()
   }
 }
