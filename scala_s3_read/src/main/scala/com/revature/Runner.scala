@@ -37,7 +37,7 @@ object Runner {
 
     val s3Client = new AmazonS3Client()
     val s3Object =
-      s3Client.getObject(new GetObjectRequest("project3q1", "monthcsv.csv"))
+      s3Client.getObject(new GetObjectRequest("project3q1", "test.csv"))
 
     import spark.implicits._
     spark.sparkContext.setLogLevel("WARN")
@@ -135,6 +135,7 @@ object Runner {
     //read each line, extract the data, filter for tech job ads, add to storedDF
 
     val myData = Source.fromInputStream(s3Object.getObjectContent()).getLines()
+    // val myData = Source.fromFile("test.csv")
     for (line <- myData) {
       val cc = spark.read
         .option("lineSep", "WARC/1.0")
@@ -160,6 +161,7 @@ object Runner {
           $"Plain Text" rlike ".*Frontend.*" or ($"Plain Text" rlike ".*Backendend.*") or ($"Plain Text" rlike ".*Fullstack.*")
             or ($"Plain Text" rlike ".*Cybersecurity.*") or ($"Plain Text" rlike ".*Software.*") or ($"Plain Text" rlike ".*Computer.*")
         )
+      // techJob.show()
 
       // Turning Dataframe into RDD in order to get Key-Value pairs of occurrences of State Codes
       val sqlCrawl = techJob
@@ -174,6 +176,8 @@ object Runner {
         .reduceByKey(_ + _)
         .toDF("State Code", "Tech Job Total")
 
+      rddCrawl.show()
+
       // Join earlier combinedCensusData Dataframe to rddCrawl Dataframe in order to determine
       val combinedCrawl = rddCrawl
         .join(combinedCensusData, ("State Code"))
@@ -184,21 +188,35 @@ object Runner {
           $"Population Estimate Total"
         )
 
-      storedDF = storedDF.union(combinedCrawl)
+      storedDF = storedDF
+        .union(combinedCrawl)
+        .groupBy(
+          $"State Code",
+          $"Geographic Area Name",
+          $"Population Estimate Total"
+        )
+        .sum("Tech Job Total")
+
+      storedDF = storedDF.select(
+        $"State Code",
+        $"Geographic Area Name",
+        $"sum(Tech Job Total)".as("Tech Job Total"),
+        $"Population Estimate Total"
+      )
+      // storedDF.show()
     }
     //combine and print results from a years worth of common crawl data
-    storedDF
-      .groupBy($"State Code", $"Population Estimate Total")
-      .sum("Tech Job Total")
+    val s3OuputBucket = "s3://project3output/q1outputsmall/"
+    val finalDF = storedDF
       .withColumn(
         "Tech Ads Proportional to Population",
-        round(($"sum(Tech Job Total)" / $"Population Estimate Total" * 100), 8)
+        round(($"Tech Job Total" / $"Population Estimate Total" * 100), 8)
       )
-      .show(102, false)
-
-    val s3OuputBucket = "s3://project3output/q1output/"
-
-    storedDF.write.format("csv").mode("overwrite").save(s3OuputBucket)
+    // .show(51, false)
+    finalDF.write
+      .format("csv")
+      .mode("overwrite")
+      .save(s3OuputBucket)
     spark.close()
   }
 }
